@@ -1,4 +1,5 @@
 import torch
+import warp as wp
 import isaaclab.sim as sim_utils
 import isaaclab.envs.mdp as mdp
 import numpy as np
@@ -50,7 +51,7 @@ class SceneCfg(InteractiveSceneCfg):
             vertical_aperture=3.024,
         ),
         offset=CameraCfg.OffsetCfg(
-            pos=(0.05, 0.57, 0.66), rot=(-0.393, -0.195, 0.399, 0.805), convention="opengl"
+            pos=(0.05, 0.57, 0.66), rot=(-0.195, 0.399, 0.805, -0.393), convention="opengl"
         ),
     )
 
@@ -66,7 +67,7 @@ class SceneCfg(InteractiveSceneCfg):
             vertical_aperture=3.024,
         ),
         offset=CameraCfg.OffsetCfg(
-            pos=(0.05, -0.57, 0.66), rot=(0.805, 0.399, -0.195, -0.393), convention="opengl"
+            pos=(0.05, -0.57, 0.66), rot=(0.399, -0.195, -0.393, 0.805), convention="opengl"
         ),
     )
 
@@ -82,7 +83,7 @@ class SceneCfg(InteractiveSceneCfg):
             vertical_aperture=3.024,
         ),
         offset=CameraCfg.OffsetCfg(
-            pos=(0.011, -0.031, -0.074), rot=(-0.420, 0.570, 0.576, -0.409), convention="opengl"
+            pos=(0.011, -0.031, -0.074), rot=(0.570, 0.576, -0.409, -0.420), convention="opengl"
         ),
     )
 
@@ -111,7 +112,7 @@ class SceneCfg(InteractiveSceneCfg):
             print(f"Found rigid body: {name}")
             pos = child.GetAttribute("xformOp:translate").Get()
             rot = child.GetAttribute("xformOp:orient").Get()
-            rot = (rot.GetReal(), rot.GetImaginary()[0], rot.GetImaginary()[1], rot.GetImaginary()[2])
+            rot = (rot.GetImaginary()[0], rot.GetImaginary()[1], rot.GetImaginary()[2], rot.GetReal())
             asset = RigidObjectCfg(
                         prim_path=f"{{ENV_REGEX_NS}}/scene/{name}",
                         spawn=None,
@@ -189,7 +190,7 @@ def arm_joint_pos(
     joint_indices = [
         i for i, name in enumerate(robot.data.joint_names) if name in joint_names
     ]
-    joint_pos = robot.data.joint_pos[0, joint_indices]
+    joint_pos = wp.to_torch(robot.data.joint_pos)[0, joint_indices]
     return joint_pos
 
 
@@ -201,7 +202,7 @@ def gripper_pos(
     joint_indices = [
         i for i, name in enumerate(robot.data.joint_names) if name in joint_names
     ]
-    joint_pos = robot.data.joint_pos[0, joint_indices]
+    joint_pos = wp.to_torch(robot.data.joint_pos)[0, joint_indices]
 
     # rescale
     joint_pos = joint_pos / (np.pi / 4)
@@ -220,7 +221,7 @@ class ObservationCfg:
             func=gripper_pos, noise=noise.GaussianNoiseCfg(std=0.05), clip=(0, 1)
         )
         external_cam = ObsTerm(
-                func=mdp.observations.image,
+                func=mdp.image,
                 params={
                     "sensor_cfg": SceneEntityCfg("external_cam"),
                     "data_type": "rgb",
@@ -228,7 +229,7 @@ class ObservationCfg:
                     }
                 )
         external_cam_2 = ObsTerm(
-                func=mdp.observations.image,
+                func=mdp.image,
                 params={
                     "sensor_cfg": SceneEntityCfg("external_cam_2"),
                     "data_type": "rgb",
@@ -236,7 +237,7 @@ class ObservationCfg:
                     }
                 )
         wrist_cam = ObsTerm(
-                func=mdp.observations.image,
+                func=mdp.image,
                 params={
                     "sensor_cfg": SceneEntityCfg("wrist_cam"),
                     "data_type": "rgb",
@@ -298,10 +299,13 @@ class EnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / (15 * 8)
         self.sim.render_interval = self.decimation
 
-        self.sim.physx.enable_ccd = True
-        self.sim.physx.gpu_temp_buffer_capacity = 2**30
-        self.sim.physx.gpu_heap_capacity = 2**30
-        self.sim.physx.gpu_collision_stack_size = 2**30
+        from isaaclab_physx.physics import PhysxCfg
+        self.sim.physics = PhysxCfg(
+            enable_ccd=True,
+            gpu_temp_buffer_capacity=2**30,
+            gpu_heap_capacity=2**30,
+            gpu_collision_stack_size=2**30,
+        )
         self.rerender_on_reset = True
 
     

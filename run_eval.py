@@ -43,6 +43,8 @@ def main(
     args_cli, _ = parser.parse_known_args()
     args_cli.enable_cameras = True
     args_cli.headless = headless
+    if not headless:
+        args_cli.visualizer = "kit"
     app_launcher = AppLauncher(args_cli)
     simulation_app = app_launcher.app
 
@@ -56,7 +58,7 @@ def main(
         "DROID",
         device=args_cli.device,
         num_envs=1,
-        use_fabric=True,
+        use_fabric=headless,
     )
     instruction = None
     match scene:
@@ -86,9 +88,12 @@ def main(
         for ep in range(episodes):
             for _ in tqdm(range(max_steps), desc=f"Episode {ep+1}/{episodes}"):
                 ret = client.infer(obs, instruction)
-                if not headless:
-                    cv2.imshow("Right Camera", cv2.cvtColor(ret["viz"], cv2.COLOR_RGB2BGR))
-                    cv2.waitKey(1)
+                if not headless and hasattr(cv2, 'imshow'):
+                    try:
+                        cv2.imshow("Right Camera", cv2.cvtColor(ret["viz"], cv2.COLOR_RGB2BGR))
+                        cv2.waitKey(1)
+                    except cv2.error:
+                        pass
                 video.append(ret["viz"])
                 action = torch.tensor(ret["action"])[None]
                 obs, _, term, trunc, _ = env.step(action)
